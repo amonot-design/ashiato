@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>あしあとマップ — 訪問記録</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --indigo:#1C2E4A; --vermilion:#D64533; --paper:#FBF8F2; --ink:#2A2620;
+    --sub:#8A8175; --line:#E7E0D4; --radius:16px; --shadow:0 8px 28px rgba(28,46,74,.22);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic",Meiryo,sans-serif;color:var(--ink);overflow:hidden;background:var(--indigo)}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,textarea{font-family:inherit;font-size:16px;color:var(--ink)}
+  #map{position:fixed;inset:0;z-index:1;background:#DCE6E4}
+
+  /* ---------- ログイン画面 ---------- */
+  .auth{
+    position:fixed;inset:0;z-index:100;background:var(--indigo);
+    display:flex;align-items:center;justify-content:center;padding:24px;
+  }
+  .auth-card{
+    width:100%;max-width:380px;background:var(--paper);border-radius:20px;
+    padding:34px 28px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;
+  }
+  .auth-card .logo{font-size:24px;font-weight:800;letter-spacing:.22em;color:var(--indigo)}
+  .auth-card .tag{font-size:11.5px;color:var(--sub);letter-spacing:.12em;margin-top:6px}
+  .auth-card .stampmark{
+    width:64px;height:64px;border-radius:999px;border:2.5px dashed var(--vermilion);
+    color:var(--vermilion);display:flex;align-items:center;justify-content:center;
+    margin:0 auto 18px;transform:rotate(-8deg);font-size:26px;
+  }
+  .auth-card input{
+    width:100%;border:1.5px solid var(--line);border-radius:10px;background:#fff;
+    padding:13px 12px;outline:none;margin-top:22px;text-align:center;
+  }
+  .auth-card input:focus{border-color:var(--indigo)}
+  .auth-card .go{
+    display:block;width:100%;background:var(--indigo);color:#fff;border-radius:12px;
+    padding:14px;font-size:15px;font-weight:700;letter-spacing:.08em;margin-top:12px;
+  }
+  .auth-card .go:disabled{opacity:.5}
+  .auth-msg{font-size:12.5px;line-height:1.9;color:var(--sub);margin-top:16px;overflow-wrap:anywhere}
+  .auth-msg.err{color:var(--vermilion)}
+
+  /* ---------- ヘッダー ---------- */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:20;padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;display:flex;gap:8px;align-items:center;pointer-events:none}
+  .brand{pointer-events:auto;display:flex;align-items:baseline;gap:8px;background:var(--indigo);color:#FBF8F2;border-radius:12px;padding:10px 14px;box-shadow:var(--shadow);white-space:nowrap}
+  .brand b{font-size:15px;letter-spacing:.14em;font-weight:700}
+  .brand span{font-size:10.5px;letter-spacing:.08em;opacity:.72}
+  .searchbox{pointer-events:auto;flex:1;display:flex;align-items:center;min-width:0;background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+  .searchbox input{flex:1;min-width:0;border:none;outline:none;padding:11px 12px;background:transparent}
+  .searchbox button{padding:11px 13px;color:var(--indigo);font-weight:700;font-size:14px;flex:none}
+  .search-results{position:fixed;z-index:21;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 62px);background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden;max-height:40vh;overflow-y:auto}
+  .search-results button{display:block;width:100%;text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.5}
+  .search-results button:last-child{border-bottom:none}
+  .search-results .hint{padding:12px 14px;font-size:12.5px;color:var(--sub);line-height:1.7}
+
+  /* ---------- ボタン類 ---------- */
+  .fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:20;background:var(--vermilion);color:#fff;border-radius:999px;padding:15px 20px 15px 17px;font-size:15px;font-weight:700;letter-spacing:.05em;box-shadow:0 10px 24px rgba(214,69,51,.45);display:flex;align-items:center;gap:8px;transition:transform .15s}
+  .fab:active{transform:scale(.96)}
+  .listbtn{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom) + 20px);z-index:20;background:#fff;color:var(--indigo);border-radius:999px;padding:13px 18px;font-size:14px;font-weight:700;box-shadow:var(--shadow);display:flex;align-items:center;gap:7px}
+  .locbtn{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom) + 78px);z-index:20;width:48px;height:48px;border-radius:999px;background:#fff;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center}
+  .curloc{width:16px;height:16px;border-radius:999px;background:#2A6FDB;border:3px solid #fff;box-shadow:0 0 0 2px rgba(42,111,219,.35),0 2px 6px rgba(0,0,0,.3)}
+  .tap-popup{padding:2px 2px 0;text-align:center}
+  .tap-popup .tp-coords{font-size:10.5px;color:var(--sub);letter-spacing:.03em;margin-bottom:6px}
+  .tap-popup button{background:var(--vermilion);color:#fff;border-radius:999px;padding:9px 16px;font-size:13.5px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+  .addbanner{position:fixed;z-index:22;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 66px);background:var(--ink);color:#fff;border-radius:999px;padding:10px 10px 10px 18px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);font-size:13.5px;white-space:nowrap}
+  .addbanner button{background:rgba(255,255,255,.18);border-radius:999px;padding:6px 13px;font-size:12.5px}
+
+  /* ---------- シート ---------- */
+  .sheet-veil{position:fixed;inset:0;z-index:30;background:rgba(28,46,74,.35);opacity:0;transition:opacity .2s}
+  .sheet-veil.show{opacity:1}
+  .sheet{position:fixed;z-index:31;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;background:var(--paper);border-radius:20px 20px 0 0;box-shadow:0 -10px 40px rgba(28,46,74,.35);max-height:86vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s cubic-bezier(.3,1,.4,1)}
+  .sheet.show{transform:translateY(0)}
+  .sheet-grip{width:44px;height:4px;border-radius:2px;background:#D6CFC2;margin:10px auto 0;flex:none}
+  .sheet-head{display:flex;align-items:flex-start;gap:10px;padding:12px 18px 10px;flex:none}
+  .sheet-head h2{font-size:18px;font-weight:700;letter-spacing:.04em;line-height:1.4;flex:1;min-width:0;overflow-wrap:anywhere}
+  .sheet-head .coords{font-size:11px;color:var(--sub);margin-top:3px;letter-spacing:.03em}
+  .sheet-close{flex:none;width:34px;height:34px;border-radius:999px;background:#EFEAE0;color:var(--sub);font-size:16px;line-height:1}
+  .sheet-body{overflow-y:auto;padding:0 18px calc(env(safe-area-inset-bottom) + 20px);-webkit-overflow-scrolling:touch}
+
+  /* ---------- フォーム ---------- */
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--indigo);letter-spacing:.1em;margin-bottom:6px}
+  .field input[type=text],.field input[type=date],.field textarea{width:100%;border:1.5px solid var(--line);border-radius:10px;background:#fff;padding:11px 12px;outline:none}
+  .field input:focus,.field textarea:focus{border-color:var(--indigo)}
+  .field textarea{min-height:88px;resize:vertical;line-height:1.7}
+  .photo-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:1.5px dashed #C9C0AF;border-radius:10px;padding:14px;color:var(--sub);font-size:14px;background:#fff}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:10px}
+  .photo-cell{position:relative;border-radius:10px;overflow:hidden;aspect-ratio:1;background:#E9E3D7}
+  .photo-cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-cell .del{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1}
+  .photo-cell .mv{position:absolute;bottom:4px;width:24px;height:24px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:1}
+  .photo-cell .mv.l{left:4px}.photo-cell .mv.r{right:4px}
+  .btn-primary{display:block;width:100%;background:var(--indigo);color:#fff;border-radius:12px;padding:14px;font-size:15px;font-weight:700;letter-spacing:.08em;margin-top:6px}
+  .btn-primary:disabled{opacity:.45}
+  .form-note{font-size:11.5px;color:var(--sub);line-height:1.7;margin-top:10px}
+
+  /* ---------- 詳細タイムライン ---------- */
+  .detail-actions{display:flex;gap:8px;margin-bottom:14px}
+  .detail-actions .btn-visit{flex:1;background:var(--vermilion);color:#fff;border-radius:11px;padding:12px;font-size:14px;font-weight:700;letter-spacing:.05em}
+  .detail-actions .btn-ghost{flex:none;background:#EFEAE0;color:var(--sub);border-radius:11px;padding:12px 14px;font-size:13px}
+  .timeline{position:relative;padding-left:8px}
+  .visit{position:relative;display:flex;gap:14px;padding:14px 0 18px;border-bottom:1px solid var(--line)}
+  .visit:last-child{border-bottom:none}
+  .stamp{flex:none;width:58px;height:58px;border-radius:999px;border:2px dashed var(--vermilion);color:var(--vermilion);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-6deg);background:#fff}
+  .stamp .m{font-size:10px;letter-spacing:.1em;line-height:1}
+  .stamp .d{font-size:20px;font-weight:800;line-height:1.15}
+  .stamp .y{font-size:8.5px;opacity:.8;line-height:1}
+  .visit-main{flex:1;min-width:0}
+  .visit-comment{font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
+  .visit-comment.empty{color:var(--sub);font-style:italic}
+  .visit-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;margin-top:9px}
+  .visit-photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;background:#E9E3D7}
+  .visit-tools{display:flex;gap:14px;margin-top:9px}
+  .visit-tools button{font-size:12px;color:var(--sub);text-decoration:underline;text-underline-offset:3px}
+
+  /* ---------- 一覧 ---------- */
+  .place-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:13px 2px;border-bottom:1px solid var(--line)}
+  .place-row .thumb{flex:none;width:52px;height:52px;border-radius:10px;object-fit:cover;background:#E9E3D7}
+  .place-row .thumb.ph{display:flex;align-items:center;justify-content:center;color:#C9C0AF;font-size:20px}
+  .place-row .info{flex:1;min-width:0}
+  .place-row .name{font-size:14.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .place-row .meta{font-size:11.5px;color:var(--sub);margin-top:3px}
+  .empty-state{padding:34px 10px;text-align:center;color:var(--sub);font-size:13.5px;line-height:2}
+  .account-row{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .account-row .mail{font-size:11.5px;color:var(--sub);overflow-wrap:anywhere}
+  .account-row button{font-size:12.5px;color:var(--vermilion);text-decoration:underline;text-underline-offset:3px;flex:none}
+
+  /* ---------- ピン・その他 ---------- */
+  .pin{position:relative;filter:drop-shadow(0 3px 4px rgba(0,0,0,.3))}
+  .pin .badge{position:absolute;top:-4px;right:-7px;min-width:17px;height:17px;padding:0 4px;background:var(--indigo);color:#fff;font-size:10px;font-weight:800;border-radius:999px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff}
+  .lightbox{position:fixed;inset:0;z-index:60;background:rgba(10,14,22,.92);display:flex;align-items:center;justify-content:center;padding:20px}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+  .toast{position:fixed;z-index:70;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 92px);background:var(--ink);color:#fff;border-radius:999px;padding:10px 18px;font-size:13px;box-shadow:var(--shadow);max-width:88vw;text-align:center;line-height:1.6}
+  .leaflet-control-attribution{font-size:9px}
+  .leaflet-bottom.leaflet-right{margin-bottom:88px}
+  @media (prefers-reduced-motion:reduce){.sheet,.sheet-veil,.fab{transition:none}}
+  @media (min-width:700px){
+    .sheet{left:auto;right:24px;bottom:24px;border-radius:20px;max-height:78vh;width:420px}
+    .brand span{font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- ログイン画面 -->
+<div id="authScreen" class="auth">
+  <div class="auth-card">
+    <div class="stampmark">👣</div>
+    <div class="logo">あしあと</div>
+    <div class="tag">じぶんの訪問記録マップ</div>
+    <div id="authForm">
+      <input id="authEmail" type="email" placeholder="メールアドレス" autocomplete="email" enterkeyhint="send">
+      <button class="go" id="authSend">ログインリンクを送る</button>
+      <div class="auth-msg">パスワードは不要です。届いたメールのリンクを<br>この端末で開くと、ログインが完了します。</div>
+    </div>
+    <div id="authStatus" class="auth-msg" hidden></div>
+  </div>
+</div>
+
+<div class="topbar" hidden id="topbar">
+  <div class="brand"><b>あしあと</b><span>訪問記録マップ</span></div>
+  <div class="searchbox">
+    <input id="searchInput" type="text" placeholder="地名・住所で探す" enterkeyhint="search">
+    <button id="searchBtn">検索</button>
+  </div>
+</div>
+<div id="searchResults" class="search-results" hidden></div>
+
+<button id="listBtn" class="listbtn" hidden>📖 記録一覧</button>
+<button id="locBtn" class="locbtn" hidden aria-label="現在地を表示"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1C2E4A" stroke-width="2"><circle cx="12" cy="12" r="3.2" fill="#1C2E4A"/><circle cx="12" cy="12" r="8"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg></button>
+<button id="fab" class="fab" hidden><span style="font-size:19px;line-height:1">＋</span>場所を追加</button>
+
+<div id="addBanner" class="addbanner" hidden>
+  地図をタップして場所を選んでください
+  <button id="cancelAdd">やめる</button>
+</div>
+
+<div id="veil" class="sheet-veil" hidden></div>
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <div style="flex:1;min-width:0">
+      <h2 id="sheetTitle"></h2>
+      <div id="sheetSub" class="coords"></div>
+    </div>
+    <button id="sheetClose" class="sheet-close" aria-label="閉じる">✕</button>
+  </div>
+  <div id="sheetBody" class="sheet-body"></div>
+</div>
+
+<div id="lightbox" class="lightbox" hidden><img id="lightboxImg" alt=""></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ============================================================
+   ★★★ 設定：この2行だけ、ご自身の値に書き換えてください ★★★
+   ============================================================ */
+const SUPABASE_URL      = "https://bohbhtwlxvxohkngyjrp.supabase.co/rest/v1/";   // 例: https://abcdefgh.supabase.co
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvaGJodHdseHZ4b2hrbmd5anJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTk2MDgsImV4cCI6MjA5OTEzNTYwOH0.xpFlLoyYP48U0i_e3Voznrj97tYO6r96ONqpiSyX4kI";      // eyJ... または sb_publishable_... で始まる文字列
+/* ============================================================ */
+
+const $ = (id) => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const today = () => new Date().toISOString().slice(0, 10);
+function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ---------- 設定チェック ---------- */
+if (SUPABASE_URL.includes('ここに') || SUPABASE_ANON_KEY.includes('ここに') || !window.supabase) {
+  const st = $('authStatus');
+  $('authForm').hidden = true;
+  st.hidden = false;
+  st.className = 'auth-msg err';
+  st.innerHTML = !window.supabase
+    ? 'この環境では外部サービスに接続できません。<br>このファイルをGitHub Pages等に配置してご利用ください。'
+    : 'まだ初期設定が済んでいません。<br>このHTMLファイルをメモ帳で開き、上部の<br>SUPABASE_URL と SUPABASE_ANON_KEY の2行を<br>ご自身の値に書き換えて保存してください。';
+  throw new Error('config missing');
+}
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- 状態 ---------- */
+let user = null;
+let currentMap = null;          // maps テーブルの行
+let places = [];                // {id,name,lat,lng,visits:[{id,date,comment,photos:[path]}]}
+let markers = new Map();
+let mode = null;                // 'pick'
+let formPhotos = [];            // {kind:'existing',path} | {kind:'new',dataUrl,blob}
+const sigCache = new Map();     // 写真パス -> {url,exp}
+
+/* ============================================================
+   認証
+   ============================================================ */
+$('authSend').addEventListener('click', sendLink);
+$('authEmail').addEventListener('keydown', e => { if (e.key === 'Enter') sendLink(); });
+
+async function sendLink() {
+  const email = $('authEmail').value.trim();
+  if (!email || !email.includes('@')) { toast('メールアドレスを入力してください'); return; }
+  $('authSend').disabled = true;
+  $('authSend').textContent = '送信中…';
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: location.origin + location.pathname }
+  });
+  $('authSend').disabled = false;
+  $('authSend').textContent = 'ログインリンクを送る';
+  const st = $('authStatus');
+  st.hidden = false;
+  if (error) {
+    st.className = 'auth-msg err';
+    st.textContent = '送信できませんでした: ' + error.message;
+  } else {
+    st.className = 'auth-msg';
+    st.innerHTML = `<b>${escapeHTML(email)}</b> にメールを送りました。<br>届いたリンクをこの端末で開いてください。<br>（届くまで1〜2分かかることがあります）`;
+  }
+}
+
+sb.auth.onAuthStateChange((_event, session) => {
+  const u = session ? session.user : null;
+  if (u && !user) { user = u; enterApp(); }
+  if (!u && user) { location.reload(); }
+});
+
+async function enterApp() {
+  $('authScreen').hidden = true;
+  ['topbar','listBtn','locBtn','fab'].forEach(id => $(id).hidden = false);
+  setTimeout(() => map.invalidateSize(), 50);
+  toast('データを読み込んでいます…');
+  try {
+    await ensureMap();
+    await loadAll();
+    hideToast();
+    if (places.length) {
+      const b = L.latLngBounds(places.map(p => [p.lat, p.lng]));
+      map.fitBounds(b.pad(0.3), { maxZoom: 14 });
+    }
+  } catch (e) {
+    toast('読み込みに失敗しました: ' + (e.message || e));
+  }
+}
+
+async function ensureMap() {
+  const { data, error } = await sb.from('maps').select('*').order('created_at');
+  if (error) throw error;
+  currentMap = (data || []).find(m => m.owner === user.id);
+  if (!currentMap) {
+    const { data: created, error: e2 } = await sb.from('maps')
+      .insert({ name: 'わたしの地図' }).select().single();
+    if (e2) throw e2;
+    currentMap = created;
+  }
+}
+
+async function loadAll() {
+  const [{ data: pl, error: e1 }, { data: vs, error: e2 }] = await Promise.all([
+    sb.from('places').select('*').eq('map_id', currentMap.id),
+    sb.from('visits').select('*').eq('map_id', currentMap.id).order('visited_on')
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const byPlace = {};
+  for (const v of (vs || [])) {
+    (byPlace[v.place_id] = byPlace[v.place_id] || []).push({
+      id: v.id, date: v.visited_on, comment: v.comment || '', photos: v.photo_paths || []
+    });
+  }
+  places = (pl || []).map(p => ({
+    id: p.id, name: p.name, lat: p.lat, lng: p.lng, visits: byPlace[p.id] || []
+  }));
+  renderMarkers();
+}
+
+/* ============================================================
+   写真: 署名付きURL（非公開バケット用）
+   ============================================================ */
+async function urlFor(path) {
+  const c = sigCache.get(path);
+  if (c && c.exp > Date.now()) return c.url;
+  const { data, error } = await sb.storage.from('photos').createSignedUrl(path, 3600);
+  if (error || !data) return '';
+  sigCache.set(path, { url: data.signedUrl, exp: Date.now() + 3300 * 1000 });
+  return data.signedUrl;
+}
+function fillImages(root) {
+  root.querySelectorAll('img[data-path]').forEach(img => {
+    urlFor(img.dataset.path).then(u => { if (u) img.src = u; });
+  });
+}
+
+/* ============================================================
+   地図
+   ============================================================ */
+const map = L.map('map', { zoomControl: false }).setView([35.681, 139.767], 12);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+const cartoAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const baseSimple = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: cartoAttr });
+const baseLight  = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: cartoAttr });
+const baseGSI    = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>' });
+const baseOSM    = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
+baseSimple.addTo(map);
+L.control.layers({ 'シンプル': baseSimple, 'ミニマル（最少表示）': baseLight, '地理院 淡色（日本）': baseGSI, 'OSM 標準（詳しい）': baseOSM }, null, { position: 'bottomright' }).addTo(map);
+
+const pinIcon = (count) => L.divIcon({
+  className: '',
+  html: `<div class="pin">
+    <svg width="34" height="44" viewBox="0 0 34 44"><path d="M17 1C8.7 1 2 7.6 2 15.8 2 26.8 17 43 17 43s15-16.2 15-27.2C32 7.6 25.3 1 17 1z" fill="#D64533" stroke="#fff" stroke-width="2"/><circle cx="17" cy="15.5" r="5.5" fill="#fff"/></svg>
+    ${count > 1 ? `<div class="badge">${count}</div>` : ''}</div>`,
+  iconSize: [34, 44], iconAnchor: [17, 43], popupAnchor: [0, -40]
+});
+
+function renderMarkers() {
+  markers.forEach(m => m.remove());
+  markers.clear();
+  for (const p of places) {
+    const m = L.marker([p.lat, p.lng], { icon: pinIcon(p.visits.length) })
+      .addTo(map).on('click', () => openDetail(p.id));
+    markers.set(p.id, m);
+  }
+}
+
+/* 地図タップ → 「ここを記録する」ポップアップ */
+const tapPopup = L.popup({ closeButton: false, offset: [0, -2] });
+map.on('click', (e) => {
+  if (!user) return;
+  if (mode === 'pick') { exitPickMode(); openPlaceForm(e.latlng.lat, e.latlng.lng); return; }
+  const el = document.createElement('div');
+  el.className = 'tap-popup';
+  el.innerHTML = `<div class="tp-coords">${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</div><button type="button">＋ ここを記録する</button>`;
+  el.querySelector('button').addEventListener('click', () => { map.closePopup(); openPlaceForm(e.latlng.lat, e.latlng.lng); });
+  tapPopup.setLatLng(e.latlng).setContent(el).openOn(map);
+});
+
+/* ---------- 現在地 ---------- */
+let curLocMarker = null, curLocCircle = null;
+$('locBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) { toast('この端末では位置情報が利用できません'); return; }
+  toast('現在地を取得しています…');
+  navigator.geolocation.getCurrentPosition(pos => {
+    hideToast();
+    const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    if (curLocMarker) {
+      curLocMarker.setLatLng([lat, lng]);
+      curLocCircle.setLatLng([lat, lng]).setRadius(accuracy);
+    } else {
+      curLocCircle = L.circle([lat, lng], { radius: accuracy, color: '#2A6FDB', weight: 1, fillColor: '#2A6FDB', fillOpacity: .12 }).addTo(map);
+      curLocMarker = L.marker([lat, lng], { zIndexOffset: 500, icon: L.divIcon({ className: '', html: '<div class="curloc"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).addTo(map);
+      curLocMarker.on('click', () => {
+        const ll = curLocMarker.getLatLng();
+        const el = document.createElement('div');
+        el.className = 'tap-popup';
+        el.innerHTML = `<div class="tp-coords">現在地</div><button type="button">＋ この場所を記録する</button>`;
+        el.querySelector('button').addEventListener('click', () => { map.closePopup(); openPlaceForm(ll.lat, ll.lng); });
+        tapPopup.setLatLng(ll).setContent(el).openOn(map);
+      });
+    }
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 16));
+  }, err => {
+    toast(err.code === 1 ? '位置情報の利用が許可されていません。ブラウザの設定を確認してください' : '現在地を取得できませんでした');
+  }, { enableHighAccuracy: true, timeout: 10000 });
+});
+
+/* ---------- 追加モード ---------- */
+$('fab').addEventListener('click', () => { mode = 'pick'; $('addBanner').hidden = false; $('fab').hidden = true; });
+$('cancelAdd').addEventListener('click', exitPickMode);
+function exitPickMode() { mode = null; $('addBanner').hidden = true; $('fab').hidden = false; }
+
+/* ============================================================
+   シート共通
+   ============================================================ */
+function openSheet(title, sub) {
+  $('sheetTitle').textContent = title;
+  $('sheetSub').textContent = sub || '';
+  $('veil').hidden = false; $('sheet').hidden = false;
+  requestAnimationFrame(() => { $('veil').classList.add('show'); $('sheet').classList.add('show'); });
+}
+function closeSheet() {
+  $('veil').classList.remove('show'); $('sheet').classList.remove('show');
+  setTimeout(() => { $('veil').hidden = true; $('sheet').hidden = true; $('sheetBody').innerHTML = ''; }, 230);
+}
+$('veil').addEventListener('click', closeSheet);
+$('sheetClose').addEventListener('click', closeSheet);
+
+/* ============================================================
+   写真の縮小・編集UI
+   ============================================================ */
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1000;
+        let { width: w, height: h } = img;
+        if (Math.max(w, h) > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        c.toBlob(blob => {
+          if (!blob) { reject(new Error('変換失敗')); return; }
+          resolve({ kind: 'new', dataUrl: c.toDataURL('image/jpeg', 0.72), blob });
+        }, 'image/jpeg', 0.72);
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function photoEditorHTML() {
+  return `<div class="field">
+    <label>写真（複数可）</label>
+    <button type="button" class="photo-add" id="photoAdd">📷 カメラロールから選ぶ／撮影する</button>
+    <input id="photoInput" type="file" accept="image/*" multiple hidden>
+    <div id="photoGrid" class="photo-grid"></div>
+  </div>`;
+}
+function bindPhotoEditor() {
+  const input = $('photoInput');
+  $('photoAdd').addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const files = [...input.files];
+    input.value = '';
+    if (!files.length) return;
+    if (formPhotos.length + files.length > 10) { toast('写真は1回の訪問につき10枚までです'); return; }
+    toast('写真を読み込んでいます…');
+    for (const f of files) {
+      try { formPhotos.push(await shrinkImage(f)); }
+      catch (e) { toast('読み込めない写真がありました'); }
+    }
+    hideToast();
+    renderPhotoGrid();
+  });
+  renderPhotoGrid();
+}
+function renderPhotoGrid() {
+  const grid = $('photoGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  formPhotos.forEach((ph, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'photo-cell';
+    cell.innerHTML = `${ph.kind === 'new'
+        ? `<img src="${ph.dataUrl}" alt="写真${i + 1}">`
+        : `<img data-path="${escapeHTML(ph.path)}" alt="写真${i + 1}">`}
+      <button class="del" aria-label="削除">✕</button>
+      ${i > 0 ? '<button class="mv l" aria-label="前へ">◀</button>' : ''}
+      ${i < formPhotos.length - 1 ? '<button class="mv r" aria-label="後へ">▶</button>' : ''}`;
+    cell.querySelector('.del').addEventListener('click', () => { formPhotos.splice(i, 1); renderPhotoGrid(); });
+    const l = cell.querySelector('.mv.l'), r = cell.querySelector('.mv.r');
+    if (l) l.addEventListener('click', () => { [formPhotos[i-1], formPhotos[i]] = [formPhotos[i], formPhotos[i-1]]; renderPhotoGrid(); });
+    if (r) r.addEventListener('click', () => { [formPhotos[i+1], formPhotos[i]] = [formPhotos[i], formPhotos[i+1]]; renderPhotoGrid(); });
+    grid.appendChild(cell);
+  });
+  fillImages(grid);
+}
+
+/* 新規写真をアップロードして、最終的な保存パス配列を返す */
+async function uploadFormPhotos(placeId) {
+  const paths = [];
+  for (const ph of formPhotos) {
+    if (ph.kind === 'existing') { paths.push(ph.path); continue; }
+    const path = `${currentMap.id}/${placeId}/${uid()}.jpg`;
+    const { error } = await sb.storage.from('photos').upload(path, ph.blob, { contentType: 'image/jpeg' });
+    if (error) throw new Error('写真のアップロードに失敗: ' + error.message);
+    paths.push(path);
+  }
+  return paths;
+}
+async function removePhotos(paths) {
+  if (paths.length) await sb.storage.from('photos').remove(paths).catch(() => {});
+}
+
+/* ============================================================
+   新しい場所の登録
+   ============================================================ */
+function openPlaceForm(lat, lng, presetName) {
+  formPhotos = [];
+  openSheet('新しい場所を記録', `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+  $('sheetBody').innerHTML = `
+    <div class="field"><label>場所の名前 <span style="color:var(--vermilion)">＊</span></label>
+      <input id="fName" type="text" placeholder="例：〇〇神社、△△カフェ" value="${presetName ? escapeHTML(presetName) : ''}"></div>
+    <div class="field"><label>訪問日</label><input id="fDate" type="date" value="${today()}"></div>
+    <div class="field"><label>コメント・思い出</label><textarea id="fComment" placeholder="感想やメモを自由に"></textarea></div>
+    ${photoEditorHTML()}
+    <button class="btn-primary" id="fSave">この場所を保存する</button>
+    <p class="form-note">写真は自動的に縮小してクラウドに保存されます。あとから「訪問を追加」で同じ場所に記録を重ねられます。</p>`;
+  bindPhotoEditor();
+  $('fSave').addEventListener('click', async () => {
+    const name = $('fName').value.trim();
+    if (!name) { toast('場所の名前を入力してください'); $('fName').focus(); return; }
+    const btn = $('fSave');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      const { data: place, error } = await sb.from('places')
+        .insert({ map_id: currentMap.id, name, lat, lng }).select().single();
+      if (error) throw error;
+      const photoPaths = await uploadFormPhotos(place.id);
+      const { data: visit, error: e2 } = await sb.from('visits').insert({
+        place_id: place.id, map_id: currentMap.id,
+        visited_on: $('fDate').value || today(),
+        comment: $('fComment').value.trim(), photo_paths: photoPaths
+      }).select().single();
+      if (e2) throw e2;
+      places.push({ id: place.id, name, lat, lng,
+        visits: [{ id: visit.id, date: visit.visited_on, comment: visit.comment, photos: photoPaths }] });
+      renderMarkers();
+      closeSheet();
+      map.flyTo([lat, lng], Math.max(map.getZoom(), 15));
+      toast(`「${name}」を記録しました`);
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'この場所を保存する';
+      toast('保存に失敗しました: ' + (e.message || e));
+    }
+  });
+}
+
+/* ============================================================
+   訪問の追加・編集
+   ============================================================ */
+function openVisitForm(placeId, visitId) {
+  const p = places.find(x => x.id === placeId); if (!p) return;
+  const editing = visitId ? p.visits.find(v => v.id === visitId) : null;
+  formPhotos = editing ? editing.photos.map(path => ({ kind: 'existing', path })) : [];
+  openSheet(editing ? '訪問記録を編集' : `「${p.name}」への訪問を追加`);
+  $('sheetBody').innerHTML = `
+    <div class="field"><label>訪問日</label><input id="fDate" type="date" value="${editing ? editing.date : today()}"></div>
+    <div class="field"><label>コメント・思い出</label><textarea id="fComment" placeholder="感想やメモを自由に">${editing ? escapeHTML(editing.comment) : ''}</textarea></div>
+    ${photoEditorHTML()}
+    <button class="btn-primary" id="fSave">${editing ? '変更を保存する' : '訪問を記録する'}</button>`;
+  bindPhotoEditor();
+  $('fSave').addEventListener('click', async () => {
+    const btn = $('fSave');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      const date = $('fDate').value || today();
+      const comment = $('fComment').value.trim();
+      const photoPaths = await uploadFormPhotos(p.id);
+      if (editing) {
+        const removed = editing.photos.filter(x => !photoPaths.includes(x));
+        const { error } = await sb.from('visits')
+          .update({ visited_on: date, comment, photo_paths: photoPaths }).eq('id', editing.id);
+        if (error) throw error;
+        await removePhotos(removed);
+        editing.date = date; editing.comment = comment; editing.photos = photoPaths;
+      } else {
+        const { data: visit, error } = await sb.from('visits').insert({
+          place_id: p.id, map_id: currentMap.id,
+          visited_on: date, comment, photo_paths: photoPaths
+        }).select().single();
+        if (error) throw error;
+        p.visits.push({ id: visit.id, date, comment, photos: photoPaths });
+      }
+      renderMarkers();
+      openDetail(p.id);
+      toast(editing ? '更新しました' : '訪問を記録しました');
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = editing ? '変更を保存する' : '訪問を記録する';
+      toast('保存に失敗しました: ' + (e.message || e));
+    }
+  });
+}
+
+/* ============================================================
+   場所の詳細
+   ============================================================ */
+function openDetail(placeId) {
+  const p = places.find(x => x.id === placeId); if (!p) return;
+  const visits = p.visits.slice().sort((a, b) => b.date.localeCompare(a.date));
+  openSheet(p.name, `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}｜訪問 ${p.visits.length} 回`);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div class="detail-actions">
+      <button class="btn-visit" id="addVisit">＋ 訪問を追加</button>
+      <button class="btn-ghost" id="renamePlace">名前変更</button>
+      <button class="btn-ghost" id="deletePlace">削除</button>
+    </div>
+    <div class="timeline" id="timeline"></div>`;
+  $('sheetBody').innerHTML = '';
+  $('sheetBody').appendChild(wrap);
+
+  const tl = wrap.querySelector('#timeline');
+  for (const v of visits) {
+    const [y, m, d] = v.date.split('-');
+    const el = document.createElement('div');
+    el.className = 'visit';
+    el.innerHTML = `
+      <div class="stamp"><span class="m">${Number(m)}月</span><span class="d">${Number(d)}</span><span class="y">${y}</span></div>
+      <div class="visit-main">
+        <div class="visit-comment ${v.comment ? '' : 'empty'}">${v.comment ? escapeHTML(v.comment) : 'コメントなし'}</div>
+        ${v.photos.length ? `<div class="visit-photos">${v.photos.map(pt => `<img data-path="${escapeHTML(pt)}" alt="写真">`).join('')}</div>` : ''}
+        <div class="visit-tools">
+          <button data-act="edit">編集</button>
+          <button data-act="del">この訪問を削除</button>
+        </div>
+      </div>`;
+    el.querySelectorAll('.visit-photos img').forEach(img =>
+      img.addEventListener('click', () => { if (img.src) showLightbox(img.src); }));
+    el.querySelector('[data-act=edit]').addEventListener('click', () => openVisitForm(p.id, v.id));
+    el.querySelector('[data-act=del]').addEventListener('click', async () => {
+      if (p.visits.length === 1) { toast('最後の訪問記録です。場所ごと削除する場合は「削除」を使ってください'); return; }
+      if (!confirm('この訪問記録を削除しますか？')) return;
+      const { error } = await sb.from('visits').delete().eq('id', v.id);
+      if (error) { toast('削除に失敗しました: ' + error.message); return; }
+      await removePhotos(v.photos);
+      p.visits = p.visits.filter(x => x.id !== v.id);
+      renderMarkers();
+      openDetail(p.id);
+    });
+    tl.appendChild(el);
+  }
+  fillImages(tl);
+
+  wrap.querySelector('#addVisit').addEventListener('click', () => openVisitForm(p.id));
+  wrap.querySelector('#renamePlace').addEventListener('click', async () => {
+    const name = prompt('新しい名前', p.name);
+    if (!name || !name.trim()) return;
+    const { error } = await sb.from('places').update({ name: name.trim() }).eq('id', p.id);
+    if (error) { toast('変更に失敗しました: ' + error.message); return; }
+    p.name = name.trim();
+    openDetail(p.id);
+  });
+  wrap.querySelector('#deletePlace').addEventListener('click', async () => {
+    if (!confirm(`「${p.name}」の記録をすべて削除しますか？`)) return;
+    const allPhotos = p.visits.flatMap(v => v.photos);
+    const { error } = await sb.from('places').delete().eq('id', p.id);
+    if (error) { toast('削除に失敗しました: ' + error.message); return; }
+    await removePhotos(allPhotos);
+    places = places.filter(x => x.id !== p.id);
+    renderMarkers();
+    closeSheet();
+    toast('削除しました');
+  });
+
+  map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15));
+}
+
+/* ============================================================
+   記録一覧（＋アカウント）
+   ============================================================ */
+$('listBtn').addEventListener('click', () => {
+  openSheet('記録一覧', `${places.length} か所`);
+  const body = $('sheetBody');
+  body.innerHTML = '';
+  if (!places.length) {
+    body.innerHTML = `<div class="empty-state">まだ記録がありません。<br>地図をタップして、はじめてのあしあとを残しましょう。</div>`;
+  } else {
+    const latest = p => p.visits.map(v => v.date).sort().at(-1) || '';
+    const sorted = places.slice().sort((a, b) => latest(b).localeCompare(latest(a)));
+    for (const p of sorted) {
+      const thumbPath = p.visits.flatMap(v => v.photos)[0];
+      const row = document.createElement('button');
+      row.className = 'place-row';
+      row.innerHTML = `
+        ${thumbPath ? `<img class="thumb" data-path="${escapeHTML(thumbPath)}" alt="">` : `<div class="thumb ph">📍</div>`}
+        <div class="info">
+          <div class="name">${escapeHTML(p.name)}</div>
+          <div class="meta">最終訪問 ${latest(p)}｜訪問 ${p.visits.length} 回</div>
+        </div><div style="color:#C9C0AF">›</div>`;
+      row.addEventListener('click', () => openDetail(p.id));
+      body.appendChild(row);
+    }
+    fillImages(body);
+  }
+  const acc = document.createElement('div');
+  acc.className = 'account-row';
+  acc.innerHTML = `<div class="mail">${escapeHTML(user.email || '')}</div><button id="signOut">ログアウト</button>`;
+  acc.querySelector('#signOut').addEventListener('click', async () => {
+    if (confirm('ログアウトしますか？')) await sb.auth.signOut();
+  });
+  body.appendChild(acc);
+});
+
+/* ============================================================
+   地名検索 (Nominatim)
+   ============================================================ */
+$('searchBtn').addEventListener('click', doSearch);
+$('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+document.addEventListener('click', e => {
+  if (!$('searchResults').contains(e.target) && !e.target.closest('.searchbox')) $('searchResults').hidden = true;
+});
+async function doSearch() {
+  const q = $('searchInput').value.trim();
+  if (!q) return;
+  const box = $('searchResults');
+  box.hidden = false;
+  box.innerHTML = `<div class="hint">検索中…</div>`;
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ja&q=${encodeURIComponent(q)}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (!data.length) { box.innerHTML = `<div class="hint">見つかりませんでした。表記を変えて試すか、地図を直接タップして登録できます。</div>`; return; }
+    box.innerHTML = '';
+    for (const r of data) {
+      const b = document.createElement('button');
+      b.textContent = r.display_name;
+      b.addEventListener('click', () => {
+        box.hidden = true;
+        const lat = +r.lat, lng = +r.lon;
+        map.flyTo([lat, lng], 16);
+        openPlaceForm(lat, lng, (r.name || r.display_name.split(',')[0]).trim());
+      });
+      box.appendChild(b);
+    }
+  } catch (e) {
+    box.innerHTML = `<div class="hint">検索サービスに接続できませんでした。時間をおいて再度お試しください。</div>`;
+  }
+}
+
+/* ============================================================
+   ライトボックス・トースト
+   ============================================================ */
+function showLightbox(src) { $('lightboxImg').src = src; $('lightbox').hidden = false; }
+$('lightbox').addEventListener('click', () => { $('lightbox').hidden = true; });
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 3000);
+}
+function hideToast() { $('toast').hidden = true; }
+
+/* ============================================================
+   起動: 既存セッションの確認
+   ============================================================ */
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (data && data.session) { user = data.session.user; enterApp(); }
+})();
+
+})();
+</script>
+</body>
+</html>
